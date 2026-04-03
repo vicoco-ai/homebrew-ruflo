@@ -1,11 +1,11 @@
 class Ruflo < Formula
   desc "Enterprise AI orchestration platform for Claude"
   homepage "https://github.com/ruvnet/ruflo"
-  url "https://registry.npmjs.org/ruflo/-/ruflo-3.5.48.tgz"
-  sha256 "d009f2e4e4086eb359db3a06dff7f3e2572bd5fcf30837527ee8e2ac3ba329f2"
+  url "https://registry.npmjs.org/ruflo/-/ruflo-3.5.51.tgz"
+  sha256 "053af4ba4b75c0ec805c4ca58a3ef48d3ac6327edb094ca3ec627af689e31376"
   license "MIT"
 
-  depends_on "node@22"
+  depends_on "node@20"
 
   # Pre-built native addon has insufficient header padding for dylib ID rewrite
   skip_clean "libexec"
@@ -16,7 +16,7 @@ class Ruflo < Formula
     # node@22 is keg-only, so create a wrapper that puts it on PATH
     # instead of symlinking (which would use #!/usr/bin/env node and fail).
     libexec.glob("bin/*").each do |f|
-      (bin/f.basename).write_env_script f, PATH: "#{Formula["node@22"].opt_bin}:$PATH"
+      (bin/f.basename).write_env_script f, PATH: "#{Formula["node@20"].opt_bin}:$PATH"
     end
 
     # Remove pre-built binaries for non-native architectures.
