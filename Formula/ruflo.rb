@@ -1,8 +1,8 @@
 class Ruflo < Formula
   desc "Enterprise AI orchestration platform for Claude"
   homepage "https://github.com/ruvnet/ruflo"
-  url "https://registry.npmjs.org/ruflo/-/ruflo-3.6.1.tgz"
-  sha256 "d6e3537479db0608c9c8390ce0bcc8a098f3d0d83b1c6b17d44d665efb2f760a"
+  url "https://registry.npmjs.org/ruflo/-/ruflo-3.6.9.tgz"
+  sha256 "ce4bb7b3bd825799ba512ca070069cb43d9c560fb3dd806b47ed0c8712ef475e"
   license "MIT"
 
   depends_on "node@20"
