@@ -41,6 +41,7 @@ jobs:
           sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" Formula/ruflo.rb
           sed -i "s|depends_on \"node@.*\"|depends_on \"node@${NODE_MAJOR}\"|" Formula/ruflo.rb
           sed -i "s|Formula\[\"node@.*\"\]|Formula[\"node@${NODE_MAJOR}\"]|g" Formula/ruflo.rb
+          sed -i "s|# node@[0-9]* is keg-only|# node@${NODE_MAJOR} is keg-only|" Formula/ruflo.rb
 
       - name: Commit and push
         if: steps.check.outputs.needs_update == 'true'

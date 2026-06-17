@@ -13,7 +13,7 @@ class Ruflo < Formula
   def install
     system "npm", "install", *std_npm_args
 
-    # node@22 is keg-only, so create a wrapper that puts it on PATH
+    # node@20 is keg-only, so create a wrapper that puts it on PATH
     # instead of symlinking (which would use #!/usr/bin/env node and fail).
     libexec.glob("bin/*").each do |f|
       (bin/f.basename).write_env_script f, PATH: "#{Formula["node@20"].opt_bin}:$PATH"
