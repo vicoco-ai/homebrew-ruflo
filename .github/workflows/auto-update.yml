@@ -7,10 +7,16 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   check-and-update:
     runs-on: ubuntu-latest
+    outputs:
+      needs_update: ${{ steps.check.outputs.needs_update }}
+      version: ${{ steps.check.outputs.latest }}
+      branch: ${{ steps.pr.outputs.branch }}
+      pr_number: ${{ steps.pr.outputs.pr_number }}
     steps:
       - uses: actions/checkout@v6
 
@@ -43,13 +49,83 @@ jobs:
           sed -i "s|Formula\[\"node@.*\"\]|Formula[\"node@${NODE_MAJOR}\"]|g" Formula/ruflo.rb
           sed -i "s|# node@[0-9]* is keg-only|# node@${NODE_MAJOR} is keg-only|" Formula/ruflo.rb
 
-      - name: Commit and push
+      - name: Open pull request
+        id: pr
         if: steps.check.outputs.needs_update == 'true'
         env:
           VERSION: ${{ steps.check.outputs.latest }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          BRANCH="bump-ruflo-${VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
           git add Formula/ruflo.rb
           git commit -m "Update ruflo to ${VERSION}"
-          git push
+          # Force-push so a re-run of the same bump updates the branch
+          # instead of failing on a stale one.
+          git push -f origin "$BRANCH"
+
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number')
+          if [ -z "$PR_NUMBER" ]; then
+            PR_NUMBER=$(gh pr create \
+              --title "Update ruflo to ${VERSION}" \
+              --body "Automated version bump. A Claude verification job will comment with a PASS/FAIL verdict on this PR." \
+              --base main --head "$BRANCH" \
+              | grep -oE '[0-9]+$')
+          fi
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+          # PRs created with the built-in GITHUB_TOKEN do not trigger
+          # pull_request workflows (recursion guard), so the formula tests
+          # would never run. workflow_dispatch is the documented exception
+          # to that guard — kick the test workflow explicitly.
+          gh workflow run test.yml --ref "$BRANCH"
+
+  verify-bump:
+    needs: check-and-update
+    if: needs.check-and-update.outputs.needs_update == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.check-and-update.outputs.branch }}
+          fetch-depth: 0
+
+      - name: Verify version bump with Claude
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            A scheduled job bumped Formula/ruflo.rb to ruflo version
+            ${{ needs.check-and-update.outputs.version }} on this branch and
+            opened PR #${{ needs.check-and-update.outputs.pr_number }}.
+            Independently verify the bump. CLAUDE.md describes what a correct
+            bump changes. Checks:
+
+            1. sha256: download the tarball from the url in the formula and
+               recompute its sha256; it must equal the formula's sha256.
+            2. node version: fetch the version's metadata from
+               https://registry.npmjs.org/ruflo/<version> and read
+               engines.node. The formula's depends_on "node@X" and every
+               Formula["node@X"] reference must use the same major X, and X
+               must satisfy engines.node.
+            3. diff sanity: run `git diff origin/main -- Formula/ruflo.rb`
+               and confirm only the url, sha256, and node@ lines changed.
+
+            Then post exactly one comment on the PR using:
+              gh pr comment ${{ needs.check-and-update.outputs.pr_number }} --body "..."
+            The comment must start with "Verdict: PASS" or "Verdict: FAIL"
+            followed by one line of evidence per check. If any check fails,
+            the verdict is FAIL with a precise explanation of what is wrong.
+          claude_args: |
+            --max-turns 10
+            --allowedTools "Read,Grep,Bash(curl:*),Bash(sha256sum:*),Bash(jq:*),Bash(git diff:*),Bash(gh pr comment:*)"
