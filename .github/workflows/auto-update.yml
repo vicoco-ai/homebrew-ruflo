@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write # to dispatch test.yml on the bump branch
 
 jobs:
   check-and-update:
