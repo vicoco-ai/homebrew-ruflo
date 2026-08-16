@@ -40,3 +40,49 @@ jobs:
 
       - name: Audit formula
         run: brew audit --strict --formula vicoco-ai/ruflo/ruflo
+
+      # Headless Claude gate: `claude -p` (no GitHub action) must return a
+      # machine-readable PASS verdict or this job — and thus the PR check —
+      # fails. Two JSON layers: the CLI's envelope (is_error, result, ...)
+      # and the verdict object we ask the model to emit inside .result.
+      - name: Claude verdict gate
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          npm install -g @anthropic-ai/claude-code
+
+          PROMPT=$(cat <<'EOF'
+          You are a release gate for this Homebrew tap. Assess whether
+          Formula/ruflo.rb is sound enough to ship:
+
+          1. Run: brew audit --strict --formula vicoco-ai/ruflo/ruflo
+             (it must pass; warnings it prints are FAIL evidence)
+          2. Read Formula/ruflo.rb and check internal consistency:
+             the version in the url looks sane, sha256 is a 64-char hex
+             string, and depends_on "node@X" agrees with every
+             Formula["node@X"] reference.
+
+          Respond with ONLY a single JSON object on one line, no markdown
+          fences, no prose before or after, in exactly this shape:
+          {"verdict":"PASS","checks":[{"name":"audit","ok":true,"detail":"..."},{"name":"consistency","ok":true,"detail":"..."}]}
+          Use "verdict":"FAIL" and "ok":false with a precise detail for
+          anything wrong. If you cannot complete a check, that check is
+          not ok and the verdict is FAIL.
+          EOF
+          )
+
+          RESULT=$(claude -p "$PROMPT" \
+            --output-format json \
+            --allowedTools "Read,Bash(brew audit:*)" \
+            --max-turns 6)
+
+          echo "--- CLI envelope ---"
+          echo "$RESULT" | jq '{is_error, num_turns, total_cost_usd, permission_denials_count: (.permission_denials | length? // .permission_denials_count)}'
+
+          test "$(echo "$RESULT" | jq -r .is_error)" = "false"
+
+          VERDICT_JSON=$(echo "$RESULT" | jq -r .result | sed -e 's/^```json//' -e 's/^```//' -e 's/```$//')
+          echo "--- verdict ---"
+          echo "$VERDICT_JSON" | jq .
+
+          test "$(echo "$VERDICT_JSON" | jq -r .verdict)" = "PASS"

@@ -37,7 +37,9 @@ Nothing else in the formula should change during a routine bump.
 `brew install`, `ruflo --version`, `brew test`, and
 `brew audit --strict --formula vicoco-ai/ruflo/ruflo`. The install step
 tolerates a non-zero exit from Homebrew's linkage fixer (see `skip_clean`
-note above) and verifies the binary directly instead.
+note above) and verifies the binary directly instead. A final headless
+Claude gate (`claude -p`, JSON output) re-audits the formula and fails the
+job unless it returns `"verdict":"PASS"`.
 
 ## Conventions
 
