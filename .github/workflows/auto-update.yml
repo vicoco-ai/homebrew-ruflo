@@ -19,7 +19,7 @@ jobs:
       branch: ${{ steps.pr.outputs.branch }}
       pr_number: ${{ steps.pr.outputs.pr_number }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Check for new version
         id: check
