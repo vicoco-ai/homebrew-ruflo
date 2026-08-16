@@ -71,14 +71,25 @@ jobs:
           EOF
           )
 
+          # Capture exit code and stderr without dying: under `bash -e` a
+          # non-zero claude exit would otherwise abort before the
+          # diagnostics below ever print.
+          set +e
           RESULT=$(claude -p "$PROMPT" \
             --output-format json \
             --allowedTools "Read,Bash(brew audit:*)" \
-            --max-turns 6)
+            --max-turns 12 \
+            2>/tmp/claude-stderr.log)
+          CLAUDE_EXIT=$?
+          set -e
 
+          echo "--- claude exit: $CLAUDE_EXIT ---"
+          echo "--- stderr ---"
+          cat /tmp/claude-stderr.log || true
           echo "--- CLI envelope ---"
-          echo "$RESULT" | jq '{is_error, num_turns, total_cost_usd, permission_denials_count: (.permission_denials | length? // .permission_denials_count)}'
+          echo "$RESULT" | jq '{is_error, subtype, num_turns, total_cost_usd, permission_denials_count: (.permission_denials | length? // .permission_denials_count)}' || echo "$RESULT"
 
+          test "$CLAUDE_EXIT" -eq 0
           test "$(echo "$RESULT" | jq -r .is_error)" = "false"
 
           VERDICT_JSON=$(echo "$RESULT" | jq -r .result | sed -e 's/^```json//' -e 's/^```//' -e 's/```$//')
