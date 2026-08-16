@@ -92,7 +92,14 @@ jobs:
           test "$CLAUDE_EXIT" -eq 0
           test "$(echo "$RESULT" | jq -r .is_error)" = "false"
 
-          VERDICT_JSON=$(echo "$RESULT" | jq -r .result | sed -e 's/^```json//' -e 's/^```//' -e 's/```$//')
+          RAW=$(echo "$RESULT" | jq -r .result)
+          echo "--- raw result ---"
+          echo "$RAW"
+
+          # Extract the verdict object structurally: models sometimes wrap
+          # the JSON in fences or prose despite instructions, so grab the
+          # first {...} line rather than trusting the format.
+          VERDICT_JSON=$(echo "$RAW" | grep -o '{.*}' | head -1)
           echo "--- verdict ---"
           echo "$VERDICT_JSON" | jq .
 
