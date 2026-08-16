@@ -24,8 +24,10 @@ class Ruflo < Formula
     # ones avoids brew-audit warnings and reduces install size.
     foreign_arch = Hardware::CPU.arm? ? "x64" : "arm64"
     nm = libexec/"lib/node_modules/ruflo/node_modules"
+    # Matches both prebuilds/darwin-<arch> dirs and per-platform npm
+    # packages like @agntcy/slim-bindings-darwin-<arch>.
     system "find", nm, "-type", "d", "-name",
-           "darwin-#{foreign_arch}", "-path", "*/prebuilds/*",
+           "*darwin-#{foreign_arch}*",
            "-exec", "rm", "-rf", "{}", "+"
     system "find", nm, "-type", "d", "-name", "ios-*",
            "-path", "*/prebuilds/*",
