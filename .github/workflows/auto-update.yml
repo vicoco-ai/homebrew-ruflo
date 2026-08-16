@@ -128,5 +128,5 @@ jobs:
             followed by one line of evidence per check. If any check fails,
             the verdict is FAIL with a precise explanation of what is wrong.
           claude_args: |
-            --max-turns 10
-            --allowedTools "Read,Grep,Bash(curl:*),Bash(sha256sum:*),Bash(jq:*),Bash(git diff:*),Bash(gh pr comment:*)"
+            --max-turns 25
+            --allowedTools "Read,Grep,Glob,Bash(curl:*),Bash(sha256sum:*),Bash(jq:*),Bash(awk:*),Bash(grep:*),Bash(cut:*),Bash(head:*),Bash(cat:*),Bash(echo:*),Bash(git diff:*),Bash(git fetch:*),Bash(git log:*),Bash(gh pr comment:*)"
