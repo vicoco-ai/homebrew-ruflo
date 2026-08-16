@@ -19,8 +19,10 @@ Homebrew tap for `ruflo` (an npm package). The only product of this repo is
 ## Version bumps
 
 `.github/workflows/auto-update.yml` runs daily: it compares the formula
-version against `npm view ruflo version` and rewrites `url`, `sha256`, and the
-`node@` references with sed. A correct bump changes:
+version against the npm registry, rewrites `url`, `sha256`, and the `node@`
+references with sed, and opens a `bump-ruflo-<version>` PR (never pushes to
+`main` directly). A separate Claude job then verifies the bump and posts a
+`Verdict: PASS`/`Verdict: FAIL` comment on the PR. A correct bump changes:
 
 1. the version inside `url`
 2. `sha256` — must match the actual tarball (`curl -sL <url> | sha256sum`)
