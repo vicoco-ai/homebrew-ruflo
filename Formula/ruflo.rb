@@ -5,7 +5,7 @@ class Ruflo < Formula
   sha256 "63bff476f3762e118176ab27a89436e1044062af91f22a04a9f33d8575c8050e"
   license "MIT"
 
-      depends_on "node@24"
+  depends_on "node@24"
 
   # Pre-built native addon has insufficient header padding for dylib ID rewrite
   skip_clean "libexec"
