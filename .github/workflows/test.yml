@@ -10,12 +10,22 @@ on:
       - "Formula/**"
       - ".github/workflows/test.yml"
   workflow_dispatch:
+  # Called by auto-update.yml so the bump pipeline can wait on the result
+  # and gate the merge on it.
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit or branch to test (defaults to the triggering ref)
+        type: string
+        default: ""
 
 jobs:
   test:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up tap
         run: |
@@ -60,7 +70,7 @@ jobs:
           2. Read Formula/ruflo.rb and check internal consistency:
              the version in the url looks sane, sha256 is a 64-char hex
              string, and depends_on "node@X" agrees with every
-             Formula["node@X"] reference.
+             formula_opt_bin("node@X") reference.
 
           Respond with ONLY a single JSON object on one line, no markdown
           fences, no prose before or after, in exactly this shape:

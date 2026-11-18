@@ -21,13 +21,30 @@ Homebrew tap for `ruflo` (an npm package). The only product of this repo is
 `.github/workflows/auto-update.yml` runs daily: it compares the formula
 version against the npm registry, rewrites `url`, `sha256`, and the `node@`
 references with sed, and opens a `bump-ruflo-<version>` PR (never pushes to
-`main` directly). A separate Claude job then verifies the bump and posts a
-`Verdict: PASS`/`Verdict: FAIL` comment on the PR. A correct bump changes:
+`main` directly). The same workflow then gates the PR on two jobs that both
+run against the exact bump commit:
+
+- `test` — calls `test.yml` (see Testing) on the bump commit.
+- `verify-bump` — Claude independently verifies the bump, posts a
+  `Verdict: PASS`/`Verdict: FAIL` comment on the PR, and returns the same
+  verdict as structured output; anything but `PASS` fails the job.
+
+If both succeed, the `merge` job squash-merges the PR (pinned to the tested
+commit) and closes older `bump-ruflo-*` PRs as superseded. If either fails,
+the PR stays open for a human and the workflow run is red.
+
+A correct bump changes:
 
 1. the version inside `url`
 2. `sha256` — must match the actual tarball (`curl -sL <url> | sha256sum`)
-3. `depends_on "node@X"` and every `Formula["node@X"]` reference — only if
-   `engines.node` changed; all node@ references must agree on the same major
+3. `depends_on "node@X"` and every `formula_opt_bin("node@X")` reference — only if
+   the `engines.node` minimum rose above the pinned major; all node@
+   references must agree on the same major
+
+The node pin is chosen by hand, not derived from `engines.node`: it should be
+a Homebrew `node@X` that satisfies `engines.node` and is not deprecated
+(`brew info node@X`). Homebrew disables each `node@X` about a year after its
+end-of-life, at which point the formula can no longer be installed.
 
 Nothing else in the formula should change during a routine bump.
 
