@@ -19,7 +19,8 @@ Homebrew tap for `ruflo` (an npm package). The only product of this repo is
 ## Version bumps
 
 `.github/workflows/auto-update.yml` runs daily: it compares the formula
-version against the npm registry, rewrites `url`, `sha256`, and the `node@`
+version against the npm registry and, once the new version is at least 12
+hours old (`MIN_AGE_HOURS`), rewrites `url`, `sha256`, and the `node@`
 references with sed, and opens a `bump-ruflo-<version>` PR (never pushes to
 `main` directly). The same workflow then gates the PR on two jobs that both
 run against the exact bump commit:
@@ -32,6 +33,10 @@ run against the exact bump commit:
 If both succeed, the `merge` job squash-merges the PR (pinned to the tested
 commit) and closes older `bump-ruflo-*` PRs as superseded. If either fails,
 the PR stays open for a human and the workflow run is red.
+
+Homebrew's npm installs refuse packages published in the last 24h, so a bump
+for a release that is 12-24h old fails the `test` job at install and passes on
+a later run.
 
 A correct bump changes:
 
