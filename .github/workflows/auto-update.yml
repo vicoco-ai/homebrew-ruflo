@@ -30,14 +30,31 @@ jobs:
 
       - name: Check for new version
         id: check
+        env:
+          # Homebrew's npm cooldown is 24h and not configurable. At 12 a
+          # release that is 12-24h old still opens a PR whose install fails
+          # until the next daily run; raise to 25 to avoid that entirely.
+          MIN_AGE_HOURS: 12
         run: |
           CURRENT=$(grep -oP 'url "https://registry.npmjs.org/ruflo/-/ruflo-\K[^"]+(?=\.tgz")' Formula/ruflo.rb)
           LATEST=$(curl -s https://registry.npmjs.org/ruflo/latest | jq -r .version)
           echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
           echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
-          if [ "$CURRENT" != "$LATEST" ]; then
-            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+          if [ "$CURRENT" = "$LATEST" ]; then
+            exit 0
           fi
+
+          # Homebrew passes --min-release-age (1 day) to npm, so a version
+          # published in the last 24h cannot be installed yet and the test
+          # job would fail. Skip very fresh releases and pick them up on a
+          # later run instead.
+          PUBLISHED=$(curl -s https://registry.npmjs.org/ruflo | jq -r --arg v "$LATEST" '.time[$v]')
+          AGE_HOURS=$(( ($(date -u +%s) - $(date -u -d "$PUBLISHED" +%s)) / 3600 ))
+          if [ "$AGE_HOURS" -lt "$MIN_AGE_HOURS" ]; then
+            echo "::notice::ruflo $LATEST was published ${AGE_HOURS}h ago (${PUBLISHED}); waiting until it is ${MIN_AGE_HOURS}h old before bumping."
+            exit 0
+          fi
+          echo "needs_update=true" >> "$GITHUB_OUTPUT"
 
       - name: Update formula
         if: steps.check.outputs.needs_update == 'true'
