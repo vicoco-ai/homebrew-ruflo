@@ -16,7 +16,7 @@ class Ruflo < Formula
     # node@24 is keg-only, so create a wrapper that puts it on PATH
     # instead of symlinking (which would use #!/usr/bin/env node and fail).
     libexec.glob("bin/*").each do |f|
-      (bin/f.basename).write_env_script f, PATH: "#{Formula["node@24"].opt_bin}:$PATH"
+      (bin/f.basename).write_env_script f, PATH: "#{formula_opt_bin("node@24")}:$PATH"
     end
 
     # Remove pre-built binaries for non-native architectures.

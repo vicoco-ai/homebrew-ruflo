@@ -60,7 +60,7 @@ jobs:
           sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" Formula/ruflo.rb
           if [ "$NODE_MIN" -gt "$NODE_CUR" ]; then
             sed -i "s|depends_on \"node@.*\"|depends_on \"node@${NODE_MIN}\"|" Formula/ruflo.rb
-            sed -i "s|Formula\[\"node@.*\"\]|Formula[\"node@${NODE_MIN}\"]|g" Formula/ruflo.rb
+            sed -i "s|formula_opt_bin(\"node@[0-9]*\")|formula_opt_bin(\"node@${NODE_MIN}\")|g" Formula/ruflo.rb
             sed -i "s|# node@[0-9]* is keg-only|# node@${NODE_MIN} is keg-only|" Formula/ruflo.rb
           fi
 
@@ -142,7 +142,7 @@ jobs:
             2. node version: fetch the version's metadata from
                https://registry.npmjs.org/ruflo/<version> and read
                engines.node. The formula's depends_on "node@X" and every
-               Formula["node@X"] reference must use the same major X, and X
+               formula_opt_bin("node@X") reference must use the same major X, and X
                must satisfy engines.node.
             3. diff sanity: run `git diff origin/main -- Formula/ruflo.rb`
                and confirm only the url, sha256, and node@ lines changed.

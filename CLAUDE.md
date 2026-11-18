@@ -37,7 +37,7 @@ A correct bump changes:
 
 1. the version inside `url`
 2. `sha256` — must match the actual tarball (`curl -sL <url> | sha256sum`)
-3. `depends_on "node@X"` and every `Formula["node@X"]` reference — only if
+3. `depends_on "node@X"` and every `formula_opt_bin("node@X")` reference — only if
    the `engines.node` minimum rose above the pinned major; all node@
    references must agree on the same major
 
