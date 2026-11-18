@@ -5,19 +5,26 @@ on:
     - cron: "0 0 * * *" # daily at midnight UTC
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
-  actions: write # to dispatch test.yml on the bump branch
+# Pipeline: open the bump PR -> test it (macOS) and have Claude verify it
+# -> merge only if both pass. Each job gets the least permission it needs.
+permissions: {}
+
+concurrency:
+  group: auto-update
+  cancel-in-progress: false
 
 jobs:
   check-and-update:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       needs_update: ${{ steps.check.outputs.needs_update }}
       version: ${{ steps.check.outputs.latest }}
       branch: ${{ steps.pr.outputs.branch }}
       pr_number: ${{ steps.pr.outputs.pr_number }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
     steps:
       - uses: actions/checkout@v6
 
@@ -40,15 +47,22 @@ jobs:
           URL="https://registry.npmjs.org/ruflo/-/ruflo-${VERSION}.tgz"
           SHA256=$(curl -sL "$URL" | sha256sum | awk '{print $1}')
 
-          # Detect minimum Node.js major version from ruflo's engines field
+          # Node: keep the formula's current node@X unless this ruflo
+          # version's engines.node minimum has moved past it. The pin is
+          # chosen by hand (a Homebrew-supported LTS), not derived from the
+          # minimum, which would drag it back to an end-of-life node.
           NODE_REQ=$(curl -s "https://registry.npmjs.org/ruflo/${VERSION}" | jq -r '.engines.node // ">= 20.0.0"')
-          NODE_MAJOR=$(echo "$NODE_REQ" | grep -oE '[0-9]+' | head -1)
+          NODE_MIN=$(echo "$NODE_REQ" | grep -oE '[0-9]+' | head -1)
+          NODE_CUR=$(grep -oP 'depends_on "node@\K[0-9]+' Formula/ruflo.rb)
+          echo "engines.node=$NODE_REQ min=$NODE_MIN formula=node@$NODE_CUR"
 
           sed -i "s|url \"https://registry.npmjs.org/ruflo/-/ruflo-.*\.tgz\"|url \"${URL}\"|" Formula/ruflo.rb
           sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" Formula/ruflo.rb
-          sed -i "s|depends_on \"node@.*\"|depends_on \"node@${NODE_MAJOR}\"|" Formula/ruflo.rb
-          sed -i "s|Formula\[\"node@.*\"\]|Formula[\"node@${NODE_MAJOR}\"]|g" Formula/ruflo.rb
-          sed -i "s|# node@[0-9]* is keg-only|# node@${NODE_MAJOR} is keg-only|" Formula/ruflo.rb
+          if [ "$NODE_MIN" -gt "$NODE_CUR" ]; then
+            sed -i "s|depends_on \"node@.*\"|depends_on \"node@${NODE_MIN}\"|" Formula/ruflo.rb
+            sed -i "s|Formula\[\"node@.*\"\]|Formula[\"node@${NODE_MIN}\"]|g" Formula/ruflo.rb
+            sed -i "s|# node@[0-9]* is keg-only|# node@${NODE_MIN} is keg-only|" Formula/ruflo.rb
+          fi
 
       - name: Open pull request
         id: pr
@@ -77,12 +91,22 @@ jobs:
           fi
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          # Everything downstream tests, verifies and merges this exact
+          # commit, so nothing pushed to the branch later can ride along.
+          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-          # PRs created with the built-in GITHUB_TOKEN do not trigger
-          # pull_request workflows (recursion guard), so the formula tests
-          # would never run. workflow_dispatch is the documented exception
-          # to that guard — kick the test workflow explicitly.
-          gh workflow run test.yml --ref "$BRANCH"
+  # PRs created with the built-in GITHUB_TOKEN do not trigger pull_request
+  # workflows (recursion guard), so run the formula tests here as a called
+  # workflow. That also lets the merge job wait on the result.
+  test:
+    needs: check-and-update
+    if: needs.check-and-update.outputs.needs_update == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test.yml
+    with:
+      ref: ${{ needs.check-and-update.outputs.head_sha }}
+    secrets: inherit
 
   verify-bump:
     needs: check-and-update
@@ -96,10 +120,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.check-and-update.outputs.branch }}
+          ref: ${{ needs.check-and-update.outputs.head_sha }}
           fetch-depth: 0
 
       - name: Verify version bump with Claude
+        id: verify
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ github.token }}
@@ -127,6 +152,55 @@ jobs:
             The comment must start with "Verdict: PASS" or "Verdict: FAIL"
             followed by one line of evidence per check. If any check fails,
             the verdict is FAIL with a precise explanation of what is wrong.
+
+            Finally, return the same verdict as your structured output. It
+            decides whether the PR is merged automatically, so return FAIL
+            if you could not complete a check or are unsure of any of them.
           claude_args: |
             --max-turns 25
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"reason":{"type":"string"}},"required":["verdict","reason"],"additionalProperties":false}'
             --allowedTools "Read,Grep,Glob,Bash(curl:*),Bash(sha256sum:*),Bash(jq:*),Bash(awk:*),Bash(grep:*),Bash(cut:*),Bash(head:*),Bash(cat:*),Bash(echo:*),Bash(git diff:*),Bash(git fetch:*),Bash(git log:*),Bash(gh pr comment:*)"
+
+      # Fail the job (and so block the merge) unless Claude returned an
+      # explicit PASS. A missing or unparseable verdict counts as FAIL.
+      - name: Require PASS verdict
+        env:
+          STRUCTURED_OUTPUT: ${{ steps.verify.outputs.structured_output }}
+        run: |
+          echo "structured output: ${STRUCTURED_OUTPUT:-<none>}"
+          VERDICT=$(jq -r '.verdict // "FAIL"' <<<"${STRUCTURED_OUTPUT:-null}" || echo FAIL)
+          test "$VERDICT" = "PASS"
+
+  # Runs only when both gates succeeded: the macOS formula tests (install,
+  # brew test, brew audit, headless Claude gate) and Claude's bump verdict.
+  merge:
+    needs: [check-and-update, test, verify-bump]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ needs.check-and-update.outputs.pr_number }}
+      HEAD_SHA: ${{ needs.check-and-update.outputs.head_sha }}
+    steps:
+      - name: Merge bump PR
+        run: |
+          gh pr merge "$PR_NUMBER" --squash --delete-branch \
+            --match-head-commit "$HEAD_SHA"
+
+      # Older bump PRs are obsolete once a newer version is on main.
+      - name: Close superseded bump PRs
+        run: |
+          gh pr list --state open --limit 200 \
+            --json number,headRefName,isCrossRepository \
+            --jq '.[] | select(.isCrossRepository | not)
+                      | select(.headRefName | startswith("bump-ruflo-"))
+                      | .number' |
+          while read -r N; do
+            [ "$N" = "$PR_NUMBER" ] && continue
+            gh pr close "$N" --delete-branch \
+              --comment "Superseded by #${PR_NUMBER}." || true
+            sleep 1
+          done

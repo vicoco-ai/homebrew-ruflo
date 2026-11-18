@@ -5,7 +5,7 @@ class Ruflo < Formula
   sha256 "63bff476f3762e118176ab27a89436e1044062af91f22a04a9f33d8575c8050e"
   license "MIT"
 
-  depends_on "node@20"
+      depends_on "node@24"
 
   # Pre-built native addon has insufficient header padding for dylib ID rewrite
   skip_clean "libexec"
@@ -13,10 +13,10 @@ class Ruflo < Formula
   def install
     system "npm", "install", *std_npm_args
 
-    # node@20 is keg-only, so create a wrapper that puts it on PATH
+    # node@24 is keg-only, so create a wrapper that puts it on PATH
     # instead of symlinking (which would use #!/usr/bin/env node and fail).
     libexec.glob("bin/*").each do |f|
-      (bin/f.basename).write_env_script f, PATH: "#{Formula["node@20"].opt_bin}:$PATH"
+      (bin/f.basename).write_env_script f, PATH: "#{Formula["node@24"].opt_bin}:$PATH"
     end
 
     # Remove pre-built binaries for non-native architectures.
@@ -28,6 +28,10 @@ class Ruflo < Formula
     # packages like @agntcy/slim-bindings-darwin-<arch>.
     system "find", nm, "-type", "d", "-name",
            "*darwin-#{foreign_arch}*",
+           "-exec", "rm", "-rf", "{}", "+"
+    # Arch-first layout, e.g. claude-agent-sdk/vendor/ripgrep/<arch>-darwin.
+    system "find", nm, "-type", "d", "-name",
+           "#{foreign_arch}-darwin",
            "-exec", "rm", "-rf", "{}", "+"
     system "find", nm, "-type", "d", "-name", "ios-*",
            "-path", "*/prebuilds/*",

@@ -10,12 +10,22 @@ on:
       - "Formula/**"
       - ".github/workflows/test.yml"
   workflow_dispatch:
+  # Called by auto-update.yml so the bump pipeline can wait on the result
+  # and gate the merge on it.
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit or branch to test (defaults to the triggering ref)
+        type: string
+        default: ""
 
 jobs:
   test:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up tap
         run: |
